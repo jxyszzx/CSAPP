@@ -139,7 +139,10 @@ NOTES:
  *   Rating: 1
  */
 int bitAnd(int x, int y) {
-  return 2;
+  /* 德摩根定律对取反同样适用
+  故x&y = ~~(x&y) == ~((~x) | (~y))
+  */
+  return ~((~x) | (~y));
 }
 /* 
  * getByte - Extract byte n from word x
@@ -150,15 +153,10 @@ int bitAnd(int x, int y) {
  *   Rating: 2
  */
 int getByte(int x, int n) {
-
-
-
-
-
-
-
-  return 2;
-
+  /* 小端 */
+  int mask = 0xff;
+  int len = n << 3;
+  return (x >> len) & mask;
 }
 /* 
  * logicalShift - shift x to the right by n, using a logical shift
@@ -169,7 +167,11 @@ int getByte(int x, int n) {
  *   Rating: 3 
  */
 int logicalShift(int x, int n) {
-  return 2;
+  /*1. 掩码可以通过取反得到
+    2. 关于>>(n-1)，当n=0时，移位负数可能会出问题，所以可以将表达式拆开来
+  */
+  int mask = ~(((1 << 31) >> n) << 1);
+  return mask & (x >> n);
 }
 /*
  * bitCount - returns count of number of 1's in word
@@ -179,7 +181,24 @@ int logicalShift(int x, int n) {
  *   Rating: 4
  */
 int bitCount(int x) {
-  return 2;
+  /*1. 主要思路是二分计数
+    2. 前两次计数是可能出现溢出的，如一位相加出现10，两位相加出现100
+    3. 如果研究一下性质也许还能优化，这里只是大致的估算了上界
+  */
+  int tmp_mask1 = (0x55) | (0x55 << 8);
+  int mask1 = (tmp_mask1) | (tmp_mask1 << 16);
+  int tmp_mask2 = (0x33) | (0x33 << 8);
+  int mask2 = (tmp_mask2) | (tmp_mask2 << 16);
+  int tmp_mask3= (0x0f) | (0x0f << 8);
+  int mask3 = (tmp_mask3) | (tmp_mask3 << 16);
+
+  x = (x & mask1) + ((x >> 1) & mask1);
+  // x = x - ((x >> 1) & mask1); //如果能用减号 
+  x = (x & mask2) + ((x >> 2) & mask2);  
+  x = (x + (x >> 4)) & mask3;  
+  x = x + (x >> 8);  
+  x = x + (x >> 16);
+  return x & 0x3f;
 }
 /* 
  * bang - Compute !x without using !
@@ -189,7 +208,23 @@ int bitCount(int x) {
  *   Rating: 4 
  */
 int bang(int x) {
-  return 2;
+  /* 解法一：一直想着写mask的话指令不够用，但其实不需要。
+  x = x | (x >> 16);
+  x = x | (x >> 8);
+  x = x | (x >> 4);
+  x = x | (x >> 2);
+  x = x | (x >> 1);
+  return (x & 1) ^ 1;
+  */
+  
+  /* 解法二（超级难想）
+    只有0会变成1，试着对0取反，得到11111111，它加一后能变回0。
+    那么对其他数取反加一，则不管什么情况，不可能变符号，即x|(~x + 1)的符号位恒为1。
+    我们已经制造出了一个符号位的区别，接下来只要把符号位拉到最低位，就可以用类似异或的方法解决了。
+    本应该是(x & 1) ^ 1来去除其他位的影响，或者直接(~x) & 1判断，但我们发现了一个特殊性质。
+    移位后我们得到了11111111和00000000，分别是-1和0，我们可以很轻易地把它转换成0和1。
+  */
+  return ((x | (~x + 1)) >> 31) + 1;
 }
 /* 
  * tmin - return minimum two's complement integer 
@@ -198,7 +233,7 @@ int bang(int x) {
  *   Rating: 1
  */
 int tmin(void) {
-  return 2;
+  return 1 << 31;
 }
 /* 
  * fitsBits - return 1 if x can be represented as an 
@@ -210,7 +245,17 @@ int tmin(void) {
  *   Rating: 2
  */
 int fitsBits(int x, int n) {
-  return 2;
+  /*刚开始当作ilog2来做，但其实没有这么强的条件。
+    1. 能否对应的是大小关系，我们可以观察临界状态让等号成立从而找到等价关系。
+    2. 从1最多到第几位，我们可以直接想办法把通用的形式表示出来。
+    对于正数，可以用n位表示的话，第一位是0，表示为0...0 0xxx(n位)，
+    对于负数，用n位表示的话，应为1...1 1xxx(n位)。
+
+    那么，我们可以分别将其右移n-1[n+(~0)]位，得到0...0和1...1。
+    要把它们表示为1，即!(~x) | !x
+  */
+  int tmp = x >> (n+(~0));
+  return (!(~tmp)) | (!tmp);
 }
 /* 
  * divpwr2 - Compute x/(2^n), for 0 <= n <= 30
@@ -221,7 +266,12 @@ int fitsBits(int x, int n) {
  *   Rating: 2
  */
 int divpwr2(int x, int n) {
-    return 2;
+  /* 课本2.3.7
+  */
+  int signx = x >> 31;
+  int mask = (1 << n) + (~0);
+  int bias = signx&mask;
+  return (x + bias) >> n;
 }
 /* 
  * negate - return -x 
@@ -231,7 +281,7 @@ int divpwr2(int x, int n) {
  *   Rating: 2
  */
 int negate(int x) {
-  return 2;
+  return ~x + 1;
 }
 /* 
  * isPositive - return 1 if x > 0, return 0 otherwise 
@@ -241,7 +291,9 @@ int negate(int x) {
  *   Rating: 3
  */
 int isPositive(int x) {
-  return 2;
+  /* 德摩根定律提取!到括号外，简化
+  */
+  return !((x >> 31) | (!x));
 }
 /* 
  * isLessOrEqual - if x <= y  then return 1, else return 0 
@@ -251,7 +303,20 @@ int isPositive(int x) {
  *   Rating: 3
  */
 int isLessOrEqual(int x, int y) {
-  return 2;
+  /* 分成符号是否相同来讨论。
+     若异号，则只有x负y正为所求；
+     若同号，则y-x >= 0为所求。【术语补码来源，对于非0x80000000，2^w - x = -x，可将减转换为加】
+     由补码的加法性质，异号之间的加法是不会有正负溢出的。【p63】
+     然后要注意的是，由于补码的不对称性，0x8000的补码为其本身，但由于补码编码本身的连续性，这并不会破坏之前的数学性质。
+     【可以通过0x8001-0x8000 和 0x8002-0x8001的对比来发现，但是鬼知道为什么啊...( ＿ ＿)ノ｜】
+  */
+  int sub = y + (~x + 1);
+  int signsub = (sub >> 31) & 1;
+  int signx = (x >> 31) & 1;
+  int signy = (y >> 31) & 1;
+  int equal = (!(signx ^ signy) & !signsub);
+  int notequal = signx & !signy;
+  return equal | notequal;
 }
 /*
  * ilog2 - return floor(log base 2 of x), where x > 0
@@ -261,7 +326,36 @@ int isLessOrEqual(int x, int y) {
  *   Rating: 4
  */
 int ilog2(int x) {
-  return 2;
+  /*note：取一个Byte可以(x>>n)&0xff，无需减去前面的那些。
+  */
+  /* 这里使用二分而不是分块其实无意中反而利用了01的所有信息。
+     前缀和编译不通过所以没有使用，抛弃可读性的话可以再优化。
+     然后，其实对于最后四位我们给出另一种分块做法(4*2Byte)里的一个套路，不用二分也能用最朴素的方法做出来。
+  */
+  int bit_16 = !!(x >> 16);
+  int bias_16 = bit_16 << 4;
+
+  int bit_8 = !!(x >> (8 + bias_16));
+  int bias_8 = bit_8 << 3;
+  
+  int bit_4 = !!(x >> (4 + bias_8 + bias_16));
+  int bias_4 = bit_4 << 2;
+  /*
+  int bit_2 = !!(x >> (2 + bias_4 + bias_8 + bias_16));
+  int bias_2 = bit_2 << 1;
+
+  int bit_1 = !!(x >> (1 + bias_2 + bias_4 + bias_8 + bias_16));
+  int bias_1 = bit_1;
+
+  return bias_1 + bias_2 + bias_4 + bias_8 + bias_16;
+  */
+  int highbyte = x >> (bias_4 + bias_8 + bias_16);
+  int b1 = (highbyte >> 3) & 1;
+  int b2 = ((highbyte >> 2) & 1) | b1;
+  int b3 = ((highbyte >> 1) & 1) | b2;
+  int b4 = (highbyte & 1) | b3;
+
+  return ~0 + b1 + b2 + b3 + b4 + bias_4 + bias_8 + bias_16;
 }
 /* 
  * float_neg - Return bit-level equivalent of expression -f for
@@ -275,7 +369,14 @@ int ilog2(int x) {
  *   Rating: 2
  */
 unsigned float_neg(unsigned uf) {
- return 2;
+ unsigned mask, check;
+  check = (uf << 1) >> 24;
+  if (check == 0xff && (uf << 9)) {
+    return uf;
+  }
+  // unsigned 
+  mask = (1 << 31);
+  return mask ^ uf;
 }
 /* 
  * float_i2f - Return bit-level equivalent of expression (float) x
@@ -287,7 +388,33 @@ unsigned float_neg(unsigned uf) {
  *   Rating: 4
  */
 unsigned float_i2f(int x) {
-  return 2;
+  unsigned sign, exponent, frac, left_shift, result, flag;
+  unsigned maskF = 0x007fffff;
+  left_shift = flag = sign = 0;
+  // Special Case
+  if (x == 0) {
+    return 0;
+  }
+  if (x == 0x80000000) {
+    return 0xcf000000;
+  }
+  // Negative
+  if (x < 0) {
+    x = -x;
+    sign = 0x80000000;
+  }
+  // left shift until highest pos is 1
+  while (!(x & 0x80000000)) {
+    x <<= 1;
+    left_shift++;
+  }
+  // round up only if lowest 8 bits of x is larger than a half, or equals a half but lowest of frac equals 1
+  flag = ((x & 0xff) > 0x80) || ((x & 0x1ff) == 0x180);
+  // 127 + 31 - left_shift
+  exponent = (158 - left_shift) << 23;
+  frac = (x >> 8) & maskF;
+  result = (sign | exponent | frac) + flag;
+  return result;
 }
 /* 
  * float_twice - Return bit-level equivalent of expression 2*f for
@@ -301,5 +428,23 @@ unsigned float_i2f(int x) {
  *   Rating: 4
  */
 unsigned float_twice(unsigned uf) {
-  return 2;
+  unsigned maskS, maskE, maskF, S, E, F;
+  maskS = 0x80000000;
+  maskE = 0x7f800000;
+  maskF = 0x007fffff;
+  S = (maskS & uf) >> 31;
+  E = (maskE & uf) >> 23;
+  F = maskF & uf;
+  // Nan
+  if (!(~(E|0xffffff00))) {
+    return uf;
+  }
+  if (E != 0) {
+    E += 1;
+  }
+  else {
+    F <<= 1;
+  }
+  uf = (S << 31) | F | (E << 23);
+  return uf;
 }
